@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from 'preact/hooks'
-import { clamp, safeSlope } from '../util'
+import { clamp, distance, safeSlope } from '../util'
 
 export interface Point {
 	x: number
@@ -37,6 +37,20 @@ export function SplineEditor({ points, setPoints }: Props) {
 			}
 		})
 	}, [points])
+
+	const handles = useMemo(() => {
+		return segments.map(s => {
+			const d1 = 8 / clamp(distance(s.x0, s.y0, s.x1, s.y1), 0.01, Infinity)
+			const d2 = 8 / clamp(distance(s.x2, s.y2, s.x3, s.y3), 0.01, Infinity)
+			return {
+				...s,
+				x1: (s.x1 - s.x0) * d1 + s.x0,
+				y1: (s.y1 - s.y0) * d1 + s.y0,
+				x2: (s.x2 - s.x3) * d2 + s.x3,
+				y2: (s.y2 - s.y3) * d2 + s.y3,
+			}
+		})
+	}, [segments])
 
 	const svg = useRef<SVGSVGElement | null>(null)
 	const drag = useRef<Drag | undefined>()
@@ -95,12 +109,12 @@ export function SplineEditor({ points, setPoints }: Props) {
 	}, [points])
 
 	return <svg ref={svg} width='100' height='100' viewBox='0 0 100 100' onContextMenu={onContextMenu} onMouseMove={mouseMove} onMouseUp={mouseUp} class='w-full h-full aspect-square'>
-		{segments.map((s, i) => <>
+		{handles.map((s, i) => <>
 			<path d={`M ${s.x0} ${s.y0} L ${s.x1} ${s.y1}`} class='stroke-orange-200' onMouseDown={startDrag('handle', i)} />
 			<path d={`M ${s.x2} ${s.y2} L ${s.x3} ${s.y3}`} class='stroke-orange-200' onMouseDown={startDrag('handle', i + 1)} />
 		</>)}
 		<path d={segments.map(s => `M ${s.x0} ${s.y0} C ${s.x1} ${s.y1}, ${s.x2} ${s.y2}, ${s.x3} ${s.y3}`).join(' ')} class='stroke-orange-300' fill='none' onMouseDown={splitSegment} />
-		{segments.map((s, i) => <>
+		{handles.map((s, i) => <>
 			<circle cx={s.x1} cy={s.y1} r='1.5' class='fill-orange-200' onMouseDown={startDrag('handle', i)} />
 			<circle cx={s.x2} cy={s.y2} r='1.5' class='fill-orange-200' onMouseDown={startDrag('handle', i + 1)} />
 		</>)}
