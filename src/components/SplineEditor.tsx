@@ -1,4 +1,4 @@
-import { StateUpdater, useCallback, useMemo, useRef, useState } from 'preact/hooks'
+import { useCallback, useMemo, useRef, useState } from 'preact/hooks'
 import { clamp, distance, safeSlope } from '../util'
 
 export interface Point {
@@ -27,7 +27,7 @@ type Drag = {
 interface Props {
 	region: Region
 	points: Point[]
-	setPoints: StateUpdater<Point[]>
+	setPoints: (points: Point[]) => void
 	axis?: boolean
 }
 export function SplineEditor({ region, points, setPoints, axis }: Props) {
@@ -50,9 +50,10 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 		}
 	}, [region, width, height])
 
-	const setPoint = useCallback((j: number, point: Partial<Point>) => {
-		setPoints(points => points.map((p, i) => {
-			if (i !== j) return p
+	const updatePoints = useCallback((newPoints: Map<number, Partial<Point>>) => {
+		setPoints(points.map((p, i) => {
+			const point = newPoints.get(i)
+			if (point === undefined) return p
 			const minX = points[i-1]?.x ?? -Infinity
 			const maxX = points[i+1]?.x ?? Infinity
 			return {
@@ -61,7 +62,10 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 				slope: point.slope ?? p.slope,
 			}
 		}))
-	}, [])
+	}, [points, setPoints])
+	const setPoint = useCallback((i: number, point: Partial<Point>) => {
+		updatePoints(new Map([[i, point]]))
+	}, [updatePoints])
 
 	const segments = useMemo(() => {
 		return points.slice(1).map((next, i) => {
@@ -115,13 +119,15 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 				const i = drag.current.index
 				const [x, y] = computePoint(event)
 				if (drag.current.type === 'point') {
+					const updates = new Map<number, Partial<Point>>()
 					if (drag.current.rels) {
 						for (const [j, s] of drag.current.rels.entries()) {
 							if (i === j) continue
-							setPoint(j, { x: x + s.x, y: y + s.y })
+							updates.set(j, { x: x + s.x, y: y + s.y })
 						}
 					}
-					setPoint(i, { x, y })
+					updates.set(i, { x, y })
+					updatePoints(updates)
 				} else {
 					const slope = (y - points[i].y) / (x - points[i].x)
 					setPoint(i, { slope })
@@ -166,7 +172,7 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 			}
 		}
 		event.stopPropagation()
-	}, [points, selected, mouseMove, setPoints, setPoint])
+	}, [points, selected, mouseMove, updatePoints, setPoint])
 
 	const splitSegment = useCallback((event: MouseEvent) => {
 		if (svg.current) {
@@ -177,7 +183,7 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 			setPoints(newPoints)
 		}
 		event.stopPropagation()
-	}, [points, computePoint, setPoints])
+	}, [points, computePoint, updatePoints])
 
 	const startSelection = useCallback((event: MouseEvent) => {
 		const [x, y] = computePoint(event)

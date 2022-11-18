@@ -1,15 +1,26 @@
-import { useMemo, useState } from 'preact/hooks'
+import { useCallback, useMemo, useState } from 'preact/hooks'
 import { Point, Region, SplineEditor } from './components/SplineEditor'
-import { round } from './util'
+import { parseSource, updateSource } from './util'
 
 const MARGINS = [0.2, 1]
 
 export function App() {
-	const [points, setPoints] = useState<Point[]>([
-		{ x: 0, y: 0, slope: 0 },
-		{ x: 0.23, y: 0.8, slope: 0.3 },
-		{ x: 0.4, y: 0.2, slope: -0.4 },
-	])
+	const [source, setSource] = useState(`{
+		"type": "minecraft:spline",
+		"spline": {
+			"coordinate": "minecraft:overworld/continents",
+			"points": [
+				{ "location": 0, "value": 0, "derivative": 0 },
+				{ "location": 0.23, "value": 0.8, "derivative": 0.3 },
+				{ "location": 0.4, "value": 0.2, "derivative": -0.4 }
+			]
+		}
+	}`)
+	const points = useMemo(() => parseSource(source), [source])
+	const setPoints = useCallback((points: Point[]) =>  {
+		console.log('SET', points)
+		setSource(updateSource(source, points))
+	}, [source])
 
 	const region = useMemo<Region>(() => {
 		let [minX, maxX, minY, maxY] = [0, 0, 0, 0]
@@ -27,20 +38,8 @@ export function App() {
 		}
 	}, [points])
 
-	const df = useMemo(() => ({
-		type: 'minecraft:spline',
-		spline: {
-			coordinate: 'minecraft:overworld/continents',
-			points: points.map(p => ({
-				location: round(p.x),
-				value: round(p.y),
-				derivative: round(p.slope),
-			})),
-		},
-	}), [points])
-
 	return <div class='grid grid-cols-2 h-screen items-start'>
-		<textarea class='p-2 bg-zinc-800 outline-none self-stretch' value={JSON.stringify(df, null, '\t')} readonly spellcheck={false} />
+		<textarea class='p-2 bg-zinc-800 outline-none self-stretch' value={source} onInput={e => setSource((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
 		<div>
 			<SplineEditor region={region} points={points} setPoints={setPoints} axis />
 		</div>
