@@ -7,22 +7,51 @@ export interface Point {
 	slope: number
 }
 
+export interface Region {
+	x1: number
+	y1: number
+	x2: number
+	y2: number
+}
+
 interface Drag {
 	type: 'point' | 'handle'
 	index: number
 }
 
 interface Props {
+	region: Region
 	points: Point[]
 	setPoints: (points: Point[]) => void
+	axis?: boolean
 }
-export function SplineEditor({ points, setPoints }: Props) {
+export function SplineEditor({ region, points, setPoints, axis }: Props) {
+	const { width, height } = useMemo(() => {
+		return {
+			width: region.x2 - region.x1,
+			height: region.y2 - region.y1,
+		}
+	}, [region])
+
+	const { S, X, Y } = useMemo(() => {
+		return {
+			S: (n: number) => n * 0.01,
+			X: (x: number) => (x - region.x1) / width,
+			Y: (y: number) => 1 - (y - region.y1) / height,
+		}
+	}, [region, width, height])
+
 	const setPoint = useCallback((j: number, point: Partial<Point>) => {
-		setPoints(points.map((p, i) => i === j ? {
-			x: point.x ? clamp(point.x, points[i-1]?.x ?? -Infinity, points[i+1]?.x ?? Infinity) : p.x,
-			y: point.y ?? p.y,
-			slope: point.slope ?? p.slope,
-		} : p ))
+		setPoints(points.map((p, i) => {
+			if (i !== j) return p
+			const minX = points[i-1]?.x ?? -Infinity
+			const maxX = points[i+1]?.x ?? Infinity
+			return {
+				x: point.x ? clamp(point.x, minX, maxX) : p.x,
+				y: point.y ?? p.y,
+				slope: point.slope ?? p.slope,
+			}
+		}))
 	}, [points])
 
 	const segments = useMemo(() => {
@@ -40,8 +69,8 @@ export function SplineEditor({ points, setPoints }: Props) {
 
 	const handles = useMemo(() => {
 		return segments.map(s => {
-			const d1 = 8 / clamp(distance(s.x0, s.y0, s.x1, s.y1), 0.01, Infinity)
-			const d2 = 8 / clamp(distance(s.x2, s.y2, s.x3, s.y3), 0.01, Infinity)
+			const d1 = S(8) / clamp(distance(X(s.x0), Y(s.y0), X(s.x1), Y(s.y1)), 0.0001, Infinity)
+			const d2 = S(8) / clamp(distance(X(s.x2), Y(s.y2), X(s.x3), Y(s.y3)), 0.0001, Infinity)
 			return {
 				...s,
 				x1: (s.x1 - s.x0) * d1 + s.x0,
@@ -50,16 +79,16 @@ export function SplineEditor({ points, setPoints }: Props) {
 				y2: (s.y2 - s.y3) * d2 + s.y3,
 			}
 		})
-	}, [segments])
+	}, [segments, S, X, Y])
 
 	const svg = useRef<SVGSVGElement | null>(null)
 	const drag = useRef<Drag | undefined>()
 
 	const computePoint = useCallback((event: MouseEvent) => {
-		const x = event.offsetX / (svg.current!.clientWidth / svg.current!.width.baseVal.value)
-		const y = event.offsetY / (svg.current!.clientHeight / svg.current!.height.baseVal.value)
+		const x = event.offsetX / (svg.current!.clientWidth / width) + region.x1
+		const y = height - (event.offsetY / (svg.current!.clientHeight / height)) + region.y1
 		return [x, y]
-	}, [])
+	}, [region, width, height])
 
 	const onContextMenu = useCallback((event: MouseEvent) => {
 		event.preventDefault()
@@ -77,7 +106,7 @@ export function SplineEditor({ points, setPoints }: Props) {
 				setPoint(i, { slope })
 			}
 		}
-	}, [points])
+	}, [points, computePoint, setPoint])
 
 	const mouseUp = useCallback(() => {
 		drag.current = undefined
@@ -98,26 +127,34 @@ export function SplineEditor({ points, setPoints }: Props) {
 				setPoint(index, { slope: 0 })
 			}
 		}
-	}, [points, mouseMove])
+	}, [points, mouseMove, setPoints, setPoint])
 
 	const splitSegment = useCallback((event: MouseEvent) => {
-		const [x, y] = computePoint(event)
-		const insert = points.findIndex(p => p.x > x) ?? points.length
-		const newPoints = points.slice()
-		newPoints.splice(insert, 0, { x, y, slope: 0 })
-		setPoints(newPoints)
-	}, [points])
+		if (svg.current) {
+			const [x, y] = computePoint(event)
+			const insert = points.findIndex(p => p.x > x) ?? points.length
+			const newPoints = points.slice()
+			newPoints.splice(insert, 0, { x, y, slope: 0 })
+			setPoints(newPoints)
+		}
+	}, [points, computePoint, setPoints])
 
-	return <svg ref={svg} width='100' height='100' viewBox='0 0 100 100' onContextMenu={onContextMenu} onMouseMove={mouseMove} onMouseUp={mouseUp} class='w-full h-full aspect-square'>
+	return <svg ref={svg} width='1' height='1' viewBox='0 0 1 1' onContextMenu={onContextMenu} onMouseMove={mouseMove} onMouseUp={mouseUp} class='w-full h-full aspect-square bg-zinc-700'>
+		{axis && <>
+			<line x1={X(region.x1)} y1={Y(0)} x2={X(region.x2)} y2={Y(0)} class='stroke-zinc-500' style={{ strokeWidth: `${S(0.5)}px` }} />
+			{Array(100).fill(0).map((_, i) =>	
+				<line x1={X(i/10-5)} y1={Y(0)} x2={X(i/10-5)} y2={Y(0)+S(i % 10 === 0 ? 3 : 1.5)} class='stroke-zinc-500' style={{ strokeWidth: `${S(0.5)}px` }} />,
+			)}
+		</>}
 		{handles.map((s, i) => <>
-			<path d={`M ${s.x0} ${s.y0} L ${s.x1} ${s.y1}`} class='stroke-orange-200' onMouseDown={startDrag('handle', i)} />
-			<path d={`M ${s.x2} ${s.y2} L ${s.x3} ${s.y3}`} class='stroke-orange-200' onMouseDown={startDrag('handle', i + 1)} />
+			<path d={`M ${X(s.x0)} ${Y(s.y0)} L ${X(s.x1)} ${Y(s.y1)}`} class='stroke-orange-200' style={{ strokeWidth: `${S(1)}px` }} onMouseDown={startDrag('handle', i)} />
+			<path d={`M ${X(s.x2)} ${Y(s.y2)} L ${X(s.x3)} ${Y(s.y3)}`} class='stroke-orange-200' style={{ strokeWidth: `${S(1)}px` }} onMouseDown={startDrag('handle', i + 1)} />
 		</>)}
-		<path d={segments.map(s => `M ${s.x0} ${s.y0} C ${s.x1} ${s.y1}, ${s.x2} ${s.y2}, ${s.x3} ${s.y3}`).join(' ')} class='stroke-orange-300' fill='none' onMouseDown={splitSegment} />
+		<path d={segments.map(s => `M ${X(s.x0)} ${Y(s.y0)} C ${X(s.x1)} ${Y(s.y1)}, ${X(s.x2)} ${Y(s.y2)}, ${X(s.x3)} ${Y(s.y3)}`).join(' ')} class='stroke-orange-300' style={{ strokeWidth: `${S(1)}px` }} fill='none' onMouseDown={splitSegment} />
 		{handles.map((s, i) => <>
-			<circle cx={s.x1} cy={s.y1} r='1.5' class='fill-orange-200' onMouseDown={startDrag('handle', i)} />
-			<circle cx={s.x2} cy={s.y2} r='1.5' class='fill-orange-200' onMouseDown={startDrag('handle', i + 1)} />
+			<circle cx={X(s.x1)} cy={Y(s.y1)} r={S(1.5)} class='fill-orange-200' onMouseDown={startDrag('handle', i)} />
+			<circle cx={X(s.x2)} cy={Y(s.y2)} r={S(1.5)} class='fill-orange-200' onMouseDown={startDrag('handle', i + 1)} />
 		</>)}
-		{points.map((p, i) => <circle cx={p.x} cy={p.y} r='2' class='fill-orange-300' onMouseDown={startDrag('point', i)} />)}
+		{points.map((p, i) => <circle cx={X(p.x)} cy={Y(p.y)} r={S(2)} class='fill-orange-300' onMouseDown={startDrag('point', i)} />)}
 	</svg>
 }
