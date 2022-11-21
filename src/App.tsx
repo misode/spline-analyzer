@@ -1,47 +1,38 @@
-import { useCallback, useMemo, useState } from 'preact/hooks'
-import { Point, Region, SplineEditor } from './components/SplineEditor'
+import { useCallback, useState } from 'preact/hooks'
+import { Point } from './components/SplineEditor'
+import { SplinePanel } from './components/SplinePanel'
+import { Toast } from './components/Toast'
+import { useParser } from './hooks/useParser'
 import { parseSource, updateSource } from './util'
 
-const MARGINS = [0.2, 1]
-
 export function App() {
-	const [source, setSource] = useState(`{
-		"type": "minecraft:spline",
-		"spline": {
-			"coordinate": "minecraft:overworld/continents",
-			"points": [
-				{ "location": 0, "value": 0, "derivative": 0 },
-				{ "location": 0.23, "value": 0.8, "derivative": 0.3 },
-				{ "location": 0.4, "value": 0.2, "derivative": -0.4 }
-			]
-		}
-	}`)
-	const points = useMemo(() => parseSource(source), [source])
+	const [source, setSource] = useState(JSON.stringify({
+		type: 'minecraft:spline',
+		spline: {
+			coordinate: 'minecraft:overworld/continents',
+			points: [
+				{ location: 0, value: 0, derivative: 0 },
+				{ location: 0.23, value: 0.8, derivative: 0.3 },
+				{ location: 0.4, value: 0.2, derivative: -0.4 },
+			],
+		},
+	}, null, 2))
+	const { value: points, errors } = useParser(source, parseSource)
 	const setPoints = useCallback((points: Point[]) =>  {
-		console.log('SET', points)
+		if (errors.length > 0) return
 		setSource(updateSource(source, points))
-	}, [source])
+	}, [source, errors])
 
-	const region = useMemo<Region>(() => {
-		let [minX, maxX, minY, maxY] = [0, 0, 0, 0]
-		for (const p of points) {
-			minX = Math.min(p.x, minX)
-			maxX = Math.max(p.x, maxX)
-			minY = Math.min(p.y, minY)
-			maxY = Math.max(p.y, maxY)
-		}
-		return {
-			x1: minX - MARGINS[0],
-			y1: minY - MARGINS[1],
-			x2: maxX + MARGINS[0],
-			y2: maxY + MARGINS[1],
-		}
-	}, [points])
-
-	return <div class='grid grid-cols-2 h-screen items-start'>
-		<textarea class='p-2 bg-zinc-800 outline-none self-stretch' value={source} onInput={e => setSource((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
-		<div>
-			<SplineEditor region={region} points={points} setPoints={setPoints} axis />
+	return <div class='h-screen'>
+		<div class='h-full grid grid-cols-2 items-start'>
+			<textarea class='p-3 bg-zinc-800 outline-none self-stretch font-mono' value={source} onInput={e => setSource((e.target as HTMLTextAreaElement).value)} spellcheck={false} />
+			<div class={`relative ${errors.length > 0 ? 'pointer-events-none' : ''}`}>
+				<SplinePanel points={points ?? []} setPoints={setPoints} />
+				{errors.length > 0 && <div class='absolute inset-0 bg-white bg-opacity-20' />}
+			</div>
+		</div>
+		<div class='fixed bottom-0 right-0 m-2'>
+			{errors.map(e => <Toast color='warning' title={e} />)}
 		</div>
 	</div>
 }
