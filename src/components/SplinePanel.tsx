@@ -1,4 +1,5 @@
 import { useMemo } from 'preact/hooks'
+import { useCommitState } from '../hooks/useCommitState'
 import { Point, Region, SplineEditor } from './SplineEditor'
 
 
@@ -8,7 +9,9 @@ interface Props {
 	points: Point[]
 	setPoints: (points: Point[]) => void
 }
-export function SplinePanel({ points, setPoints }: Props) {
+export function SplinePanel({ points: points_, setPoints: setPoints_ }: Props) {
+	const [points, setPoints, commitPoints] = useCommitState(points_, setPoints_)
+
 	const region = useMemo<Region>(() => {
 		let [minX, maxX, minY, maxY] = [0, 0, 0, 0]
 		for (const p of points) {
@@ -25,5 +28,5 @@ export function SplinePanel({ points, setPoints }: Props) {
 		}
 	}, [points])
 
-	return <SplineEditor region={region} points={points} setPoints={setPoints} axis />
+	return <SplineEditor region={region} points={points} setPoints={setPoints} commitPoints={commitPoints} axis />
 }

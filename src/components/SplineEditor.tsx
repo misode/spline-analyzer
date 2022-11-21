@@ -28,9 +28,10 @@ interface Props {
 	region: Region
 	points: Point[]
 	setPoints: (points: Point[]) => void
+	commitPoints?: () => void
 	axis?: boolean
 }
-export function SplineEditor({ region, points, setPoints, axis }: Props) {
+export function SplineEditor({ region, points, setPoints, commitPoints, axis }: Props) {
 	const [box, setBox] = useState<Region | undefined>(undefined)
 
 	const [selected, setSelected] = useState<number[]>([])
@@ -146,7 +147,8 @@ export function SplineEditor({ region, points, setPoints, axis }: Props) {
 		}
 		drag.current = undefined
 		setBox(undefined)
-	}, [points, box])
+		commitPoints?.()
+	}, [points, box, commitPoints])
 
 	const startDrag = useCallback((type: 'point' | 'handle', i: number) => (event: MouseEvent) => {
 		if (event.button === 0) {
